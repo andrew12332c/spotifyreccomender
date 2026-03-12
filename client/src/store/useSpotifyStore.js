@@ -32,7 +32,10 @@ const useSpotifyStore = create((set) => ({
       const res = await fetch(
         `/api/spotify/search?q=${encodeURIComponent(query)}`
       );
-      if (!res.ok) throw new Error("Search failed");
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `Search failed (${res.status})`);
+      }
       const data = await res.json();
       set({ searchResults: data.tracks, isSearching: false });
     } catch (err) {
@@ -63,7 +66,10 @@ const useSpotifyStore = create((set) => ({
       const res = await fetch(
         `/api/spotify/recommend?trackId=${track.id}`
       );
-      if (!res.ok) throw new Error("Failed to get recommendations");
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `Recommendations failed (${res.status})`);
+      }
       const data = await res.json();
       set({
         similar: data.similar,

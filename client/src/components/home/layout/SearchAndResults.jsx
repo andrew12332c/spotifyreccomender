@@ -63,16 +63,23 @@ export default function SearchAndResults() {
 
       {error && (
         <Box
-          bg="rgba(220, 38, 38, 0.15)"
-          border="1px solid rgba(220, 38, 38, 0.3)"
-          color="#fca5a5"
+          bg={error.includes("429") ? "rgba(234, 179, 8, 0.12)" : "rgba(220, 38, 38, 0.15)"}
+          border={error.includes("429") ? "1px solid rgba(234, 179, 8, 0.3)" : "1px solid rgba(220, 38, 38, 0.3)"}
+          color={error.includes("429") ? "#fbbf24" : "#fca5a5"}
           px="4"
           py="3"
           borderRadius="md"
           w="100%"
           maxW="600px"
         >
-          <Text fontSize="sm">{error}</Text>
+          <Text fontSize="sm" fontWeight="600">
+            {error.includes("429") ? "Spotify rate limit hit" : "Something went wrong"}
+          </Text>
+          <Text fontSize="xs" mt="1" opacity="0.8">
+            {error.includes("429")
+              ? "Too many requests — wait a minute or two and try again."
+              : error}
+          </Text>
         </Box>
       )}
 

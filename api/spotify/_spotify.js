@@ -34,21 +34,39 @@ export async function getSpotifyToken() {
   return tokenCache.token;
 }
 
+const MAX_RETRIES = 3;
+
 export async function spotifyFetch(endpoint, params = {}) {
-  const token = await getSpotifyToken();
   const url = new URL(`https://api.spotify.com/v1${endpoint}`);
   Object.entries(params).forEach(([k, v]) => {
     if (v !== undefined && v !== null) url.searchParams.set(k, String(v));
   });
 
-  const res = await fetch(url.toString(), {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const token = await getSpotifyToken();
+    const res = await fetch(url.toString(), {
+      headers: { Authorization: `Bearer ${token}` },
+    });
 
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Spotify API ${res.status}: ${body}`);
+    if (res.status === 429) {
+      const retryAfter = parseInt(res.headers.get("retry-after") || "1", 10);
+      const waitMs = Math.max(retryAfter, 1) * 1000;
+      if (attempt < MAX_RETRIES) {
+        await new Promise((r) => setTimeout(r, waitMs));
+        continue;
+      }
+    }
+
+    if (res.status === 401 && attempt < MAX_RETRIES) {
+      tokenCache = { token: null, expiresAt: 0 };
+      continue;
+    }
+
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`Spotify API ${res.status}: ${body}`);
+    }
+
+    return res.json();
   }
-
-  return res.json();
 }
