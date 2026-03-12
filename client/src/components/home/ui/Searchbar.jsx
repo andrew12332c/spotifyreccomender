@@ -24,13 +24,13 @@ export default function SearchBar() {
   }, [searchResults]);
 
   useEffect(() => {
-    const handleClick = (e) => {
+    const handleClickOutside = (e) => {
       if (containerRef.current && !containerRef.current.contains(e.target)) {
         setShowDropdown(false);
       }
     };
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
+    document.addEventListener("pointerdown", handleClickOutside);
+    return () => document.removeEventListener("pointerdown", handleClickOutside);
   }, []);
 
   const handleChange = (e) => {
@@ -45,7 +45,7 @@ export default function SearchBar() {
   };
 
   return (
-    <Box ref={containerRef} position="relative" w="100%" maxW="600px">
+    <Box ref={containerRef} position="relative" w="100%" maxW="600px" zIndex="10">
       <Box position="relative">
         <Input
           value={query}
@@ -78,27 +78,37 @@ export default function SearchBar() {
       {showDropdown && (
         <VStack
           position="absolute"
-          top="100%"
-          mt="2"
+          top="calc(100% + 4px)"
+          left="0"
           w="100%"
           bg="#1e1e1e"
           border="1px solid #3a3a3a"
           borderRadius="lg"
-          maxH="400px"
+          maxH="420px"
           overflowY="auto"
-          zIndex="999"
+          zIndex="1500"
           spacing="0"
-          boxShadow="dark-lg"
+          boxShadow="0 8px 32px rgba(0,0,0,0.5)"
+          py="1"
         >
           {searchResults.map((track) => (
             <HStack
               key={track.id}
+              as="button"
+              type="button"
               w="100%"
-              p="3"
+              minH="56px"
+              px="4"
+              py="3"
               cursor="pointer"
+              bg="transparent"
               _hover={{ bg: "#2a2a2a" }}
+              _active={{ bg: "#333" }}
               onClick={() => handleSelect(track)}
               spacing="3"
+              align="center"
+              borderBottom="1px solid #2a2a2a"
+              _last={{ borderBottom: "none" }}
             >
               <Image
                 src={track.album.imageSmall || track.album.image}
@@ -107,9 +117,10 @@ export default function SearchBar() {
                 borderRadius="md"
                 objectFit="cover"
                 flexShrink="0"
+                pointerEvents="none"
                 fallbackSrc="https://via.placeholder.com/40/1e1e1e/666?text=+"
               />
-              <Box flex="1" minW="0">
+              <Box flex="1" minW="0" textAlign="left" pointerEvents="none">
                 <Text color="white" fontSize="sm" noOfLines={1} fontWeight="500">
                   {track.name}
                 </Text>
