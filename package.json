@@ -9,9 +9,7 @@
     "dev:client": "npm run dev --workspace client",
     "dev:api": "node dev-server.js"
   },
-  "dependencies": {
-    "react-router-dom": "^7.12.0"
-  },
+  "dependencies": {},
   "devDependencies": {
     "dotenv": "^16.6.1"
   }
