@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import useDiscoveryStore from "./useDiscoveryStore";
 import useLastfmStore from "./useLastfmStore";
+import useHistoryStore from "./useHistoryStore";
 
 const useSpotifyStore = create((set) => ({
   query: "",
@@ -14,6 +15,8 @@ const useSpotifyStore = create((set) => ({
   isLoadingRecs: false,
 
   error: null,
+
+  hasAutoLoaded: false,
 
   setQuery: (query) => set({ query }),
 
@@ -38,6 +41,8 @@ const useSpotifyStore = create((set) => ({
   },
 
   selectTrack: async (track) => {
+    useHistoryStore.getState().addToHistory(track);
+
     set({
       selectedTrack: track,
       searchResults: [],
@@ -51,7 +56,6 @@ const useSpotifyStore = create((set) => ({
     const artistName = track.artists[0]?.name;
     const artistId = track.artists[0]?.id;
 
-    // Fire ListenBrainz + Last.fm fetches in parallel (non-blocking)
     useDiscoveryStore.getState().fetchWildcards(artistName, track.name, artistId);
     useLastfmStore.getState().fetchLastfm(track.name, artistName, artistId);
 
@@ -68,6 +72,17 @@ const useSpotifyStore = create((set) => ({
       });
     } catch (err) {
       set({ error: err.message, isLoadingRecs: false });
+    }
+  },
+
+  autoLoadFromHistory: () => {
+    const state = useSpotifyStore.getState();
+    if (state.hasAutoLoaded || state.selectedTrack) return;
+    set({ hasAutoLoaded: true });
+
+    const history = useHistoryStore.getState().history;
+    if (history.length > 0) {
+      state.selectTrack(history[0]);
     }
   },
 

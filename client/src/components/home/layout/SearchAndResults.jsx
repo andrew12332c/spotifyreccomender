@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import {
   Box,
   VStack,
@@ -11,6 +12,7 @@ import {
 } from "@chakra-ui/react";
 import SearchBar from "../ui/Searchbar";
 import TrackCard from "../ui/TrackCard";
+import HistorySection from "../ui/HistorySection";
 import useSpotifyStore from "../../../store/useSpotifyStore";
 import useDiscoveryStore from "../../../store/useDiscoveryStore";
 import useLastfmStore from "../../../store/useLastfmStore";
@@ -24,12 +26,16 @@ export default function SearchAndResults() {
     error,
     selectTrack,
     clearSelection,
+    autoLoadFromHistory,
   } = useSpotifyStore();
 
   const { wildcards, isLoadingWildcards } = useDiscoveryStore();
   const { lastfmSimilar, lastfmArtists, isLoadingLastfm } = useLastfmStore();
 
-  // Collect all Spotify + LB track IDs so we can deduplicate across sources
+  useEffect(() => {
+    autoLoadFromHistory();
+  }, [autoLoadFromHistory]);
+
   const allShownIds = new Set([
     ...similar.map((t) => t.id),
     ...discovery.map((t) => t.id),
@@ -52,6 +58,8 @@ export default function SearchAndResults() {
   return (
     <VStack spacing="8" w="100%" maxW="1100px" mx="auto" px="4" py="8">
       <SearchBar />
+
+      <HistorySection />
 
       {error && (
         <Box
@@ -292,7 +300,7 @@ export default function SearchAndResults() {
                 </Box>
               </Flex>
 
-              {/* Wildcard Discoveries — ListenBrainz collaborative filtering */}
+              {/* Wildcard Discoveries — ListenBrainz */}
               <Box w="100%">
                 <Box mb="4">
                   <HStack spacing="2" align="baseline">

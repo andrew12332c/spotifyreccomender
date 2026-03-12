@@ -1,4 +1,5 @@
 import { Box, Image, Text, HStack, Link, Badge } from "@chakra-ui/react";
+import usePlaylistStore from "../../../store/usePlaylistStore";
 
 const SOURCE_STYLES = {
   listenbrainz: { border: "#a855f7", bg: "rgba(168, 85, 247, 0.2)", color: "#c084fc", label: "LB" },
@@ -8,6 +9,17 @@ const SOURCE_STYLES = {
 export default function TrackCard({ track, onSelect }) {
   const duration = formatDuration(track.durationMs);
   const src = SOURCE_STYLES[track.source];
+  const { addToPlaylist, removeFromPlaylist } = usePlaylistStore();
+  const inPlaylist = usePlaylistStore((s) => s.playlist.some((t) => t.id === track.id));
+
+  const handlePlaylistToggle = (e) => {
+    e.stopPropagation();
+    if (inPlaylist) {
+      removeFromPlaylist(track.id);
+    } else {
+      addToPlaylist(track);
+    }
+  };
 
   return (
     <Box
@@ -20,6 +32,7 @@ export default function TrackCard({ track, onSelect }) {
       transition="all 0.15s"
       w="100%"
       borderLeft={src ? `3px solid ${src.border}` : "3px solid transparent"}
+      role="group"
     >
       <HStack spacing="3" p="3" align="center">
         <Image
@@ -58,6 +71,36 @@ export default function TrackCard({ track, onSelect }) {
             {track.album.name}{duration && ` \u00B7 ${duration}`}
           </Text>
         </Box>
+
+        {/* Add / Remove from playlist */}
+        <Box
+          onClick={handlePlaylistToggle}
+          cursor="pointer"
+          flexShrink="0"
+          w="28px"
+          h="28px"
+          display="flex"
+          alignItems="center"
+          justifyContent="center"
+          borderRadius="full"
+          border="1px solid"
+          borderColor={inPlaylist ? "#1DB954" : "#555"}
+          color={inPlaylist ? "#1DB954" : "#555"}
+          bg={inPlaylist ? "rgba(29, 185, 84, 0.1)" : "transparent"}
+          _hover={{
+            borderColor: inPlaylist ? "#f87171" : "#1DB954",
+            color: inPlaylist ? "#f87171" : "#1DB954",
+            bg: inPlaylist ? "rgba(248, 113, 113, 0.1)" : "rgba(29, 185, 84, 0.1)",
+          }}
+          transition="all 0.15s"
+          fontSize="md"
+          fontWeight="300"
+          lineHeight="1"
+          title={inPlaylist ? "Remove from playlist" : "Add to playlist"}
+        >
+          {inPlaylist ? "\u2713" : "+"}
+        </Box>
+
         {track.externalUrl && (
           <Link
             href={track.externalUrl}
