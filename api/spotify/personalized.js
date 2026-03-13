@@ -6,8 +6,8 @@ import { lookupArtistMBID, findSimilarArtists, getTopRecordings } from "../liste
  * GET /api/spotify/personalized?seeds=JSON
  *
  * `seeds` is a JSON-encoded array of { id, name, artist } objects drawn from
- * listening history and playlist.  The endpoint fans out to three independent
- * pipelines — Spotify, Last.fm, and ListenBrainz — then merges and deduplicates.
+ * listening history and playlist.  Discovery is powered entirely by Last.fm
+ * and ListenBrainz — Spotify is only used to resolve results to playable tracks.
  */
 export default async function handler(req, res) {
   let seeds;
@@ -24,25 +24,23 @@ export default async function handler(req, res) {
   const excludeIds = new Set(seeds.map((s) => s.id));
 
   try {
-    // Run all three pipelines in parallel — each one is fault-tolerant
-    const [spotifyResults, lastfmResults, listenbrainzResults] = await Promise.all([
-      spotifyPipeline(seeds, excludeIds),
+    const [lastfmResults, listenbrainzResults] = await Promise.all([
       lastfmPipeline(seeds, excludeIds),
       listenbrainzPipeline(seeds, excludeIds),
     ]);
 
-    // Interleave results: Spotify, Last.fm, LB, Spotify, Last.fm, LB...
+    // Interleave: alternate Last.fm and ListenBrainz for a balanced mix
     const seen = new Set();
     const merged = [];
-    const pools = [spotifyResults, lastfmResults, listenbrainzResults];
-    const indices = [0, 0, 0];
+    const pools = [lastfmResults, listenbrainzResults];
+    const indices = [0, 0];
 
-    for (let round = 0; merged.length < 15 && round < 30; round++) {
-      const pool = pools[round % 3];
-      const idx = indices[round % 3];
+    for (let round = 0; merged.length < 15 && round < 40; round++) {
+      const pool = pools[round % 2];
+      const idx = indices[round % 2];
       if (idx < pool.length) {
         const t = pool[idx];
-        indices[round % 3]++;
+        indices[round % 2]++;
         if (!seen.has(t.id) && !excludeIds.has(t.id)) {
           seen.add(t.id);
           merged.push(t);
@@ -53,7 +51,6 @@ export default async function handler(req, res) {
     res.json({
       forYou: merged,
       sources: {
-        spotify: spotifyResults.length,
         lastfm: lastfmResults.length,
         listenbrainz: listenbrainzResults.length,
       },
@@ -65,96 +62,30 @@ export default async function handler(req, res) {
 }
 
 // ------------------------------------------------------------------
-// Spotify pipeline: genres + search/recommendations
-// ------------------------------------------------------------------
-async function spotifyPipeline(seeds, excludeIds) {
-  try {
-    const seedIds = seeds.slice(0, 5).map((s) => s.id);
-    const artistNames = [...new Set(seeds.map((s) => s.artist))];
-
-    const genrePool = [];
-    for (const name of artistNames.slice(0, 3)) {
-      try {
-        const data = await spotifyFetch("/search", { q: `artist:"${name}"`, type: "artist", limit: 1 });
-        const artist = data.artists?.items?.[0];
-        if (artist?.genres) genrePool.push(...artist.genres);
-      } catch { /* skip */ }
-    }
-    const genres = [...new Set(genrePool)];
-
-    // Try /recommendations first
-    let tracks = [];
-    try {
-      const params = { limit: 20 };
-      if (seedIds.length <= 3 && genres.length > 0) {
-        params.seed_tracks = seedIds.slice(0, 3).join(",");
-        params.seed_genres = genres.slice(0, 2).join(",");
-      } else {
-        params.seed_tracks = seedIds.slice(0, 5).join(",");
-      }
-      const data = await spotifyFetch("/recommendations", params);
-      tracks = (data.tracks || []).map((t) => ({ ...formatTrack(t), source: "spotify" }));
-    } catch { /* fall through to search */ }
-
-    // Fill remaining via genre search
-    if (tracks.length < 8) {
-      const queries = [];
-      if (genres.length >= 2) queries.push(`genre:"${genres[0]}" genre:"${genres[1]}"`);
-      if (genres.length >= 1) queries.push(`genre:"${genres[0]}"`);
-      for (const name of artistNames.slice(0, 2)) queries.push(name);
-
-      for (const q of queries) {
-        if (tracks.length >= 10) break;
-        try {
-          const data = await spotifyFetch("/search", { q, type: "track", limit: 8 });
-          for (const t of data.tracks?.items || []) {
-            if (!excludeIds.has(t.id)) {
-              tracks.push({ ...formatTrack(t), source: "spotify" });
-            }
-          }
-        } catch { /* skip */ }
-      }
-    }
-
-    // Deduplicate by artist
-    const seen = new Set();
-    return tracks.filter((t) => {
-      const aid = t.artists[0]?.id;
-      if (seen.has(aid)) return false;
-      seen.add(aid);
-      return true;
-    });
-  } catch {
-    return [];
-  }
-}
-
-// ------------------------------------------------------------------
 // Last.fm pipeline: scrobble-based similar tracks + similar artists
 // ------------------------------------------------------------------
 async function lastfmPipeline(seeds, excludeIds) {
   try {
-    // Pick 3 representative seed tracks for Last.fm queries
-    const picks = seeds.slice(0, 3);
+    const picks = seeds.slice(0, 4);
 
-    // Get similar tracks for each seed (parallel)
+    // Similar tracks for each seed (scrobble co-occurrence)
     const similarBatches = await Promise.allSettled(
-      picks.map((s) => getSimilarTracks(s.name, s.artist, 8))
+      picks.map((s) => getSimilarTracks(s.name, s.artist, 10))
     );
     const similarCandidates = similarBatches
       .filter((r) => r.status === "fulfilled")
       .flatMap((r) => r.value);
 
-    // Get similar artists from top 2 seeds, then their top tracks
+    // Similar artists from top 3 seeds → their top tracks
     const artistBatches = await Promise.allSettled(
-      picks.slice(0, 2).map((s) => getSimilarArtists(s.artist, 4))
+      picks.slice(0, 3).map((s) => getSimilarArtists(s.artist, 5))
     );
     const relatedArtists = artistBatches
       .filter((r) => r.status === "fulfilled")
       .flatMap((r) => r.value);
 
     const topTrackBatches = await Promise.allSettled(
-      relatedArtists.slice(0, 5).map((a) => getArtistTopTracks(a.name, 2))
+      relatedArtists.slice(0, 8).map((a) => getArtistTopTracks(a.name, 2))
     );
     const artistCandidates = topTrackBatches
       .filter((r) => r.status === "fulfilled")
@@ -162,10 +93,8 @@ async function lastfmPipeline(seeds, excludeIds) {
 
     const allCandidates = [...similarCandidates, ...artistCandidates];
 
-    // Map to Spotify tracks (parallel, capped)
-    const mapped = await mapToSpotify(allCandidates.slice(0, 20), excludeIds, "lastfm");
+    const mapped = await mapToSpotify(allCandidates.slice(0, 25), excludeIds, "lastfm");
 
-    // Deduplicate by artist
     const seen = new Set();
     return mapped.filter((t) => {
       const aid = t.artists[0]?.id;
@@ -184,8 +113,7 @@ async function lastfmPipeline(seeds, excludeIds) {
 // ------------------------------------------------------------------
 async function listenbrainzPipeline(seeds, excludeIds) {
   try {
-    // Pick 2 distinct artists from seeds (MusicBrainz is rate-limited to 1 req/sec)
-    const uniqueArtists = [...new Set(seeds.map((s) => s.artist))].slice(0, 2);
+    const uniqueArtists = [...new Set(seeds.map((s) => s.artist))].slice(0, 3);
 
     const allCandidates = [];
 
@@ -194,13 +122,13 @@ async function listenbrainzPipeline(seeds, excludeIds) {
         const mbid = await lookupArtistMBID(artistName);
         if (!mbid) continue;
 
-        const similar = await findSimilarArtists(mbid, artistName, 6);
+        const similar = await findSimilarArtists(mbid, artistName, 8);
         if (!similar.length) continue;
 
         const recBatches = await Promise.allSettled(
-          similar.slice(0, 4).map((a) =>
+          similar.slice(0, 5).map((a) =>
             getTopRecordings(a.id).then((recs) =>
-              recs.slice(0, 2).map((r) => ({
+              recs.slice(0, 3).map((r) => ({
                 name: r.recording_name || r.title || "",
                 artist: r.artist_name || a.name,
               }))
@@ -216,7 +144,7 @@ async function listenbrainzPipeline(seeds, excludeIds) {
 
     if (!allCandidates.length) return [];
 
-    const mapped = await mapToSpotify(allCandidates.slice(0, 15), excludeIds, "listenbrainz");
+    const mapped = await mapToSpotify(allCandidates.slice(0, 20), excludeIds, "listenbrainz");
 
     const seen = new Set();
     return mapped.filter((t) => {
@@ -232,7 +160,7 @@ async function listenbrainzPipeline(seeds, excludeIds) {
 }
 
 // ------------------------------------------------------------------
-// Shared helpers
+// Shared: resolve Last.fm/LB candidates to playable Spotify tracks
 // ------------------------------------------------------------------
 async function mapToSpotify(candidates, excludeIds, source) {
   const results = await Promise.allSettled(
@@ -249,15 +177,6 @@ async function mapToSpotify(candidates, excludeIds, source) {
     .filter((r) => r.status === "fulfilled" && r.value)
     .map((r) => r.value)
     .filter((t) => !excludeIds.has(t.id));
-}
-
-function shuffle(arr) {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
 }
 
 function formatTrack(t) {

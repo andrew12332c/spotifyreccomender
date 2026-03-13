@@ -14,7 +14,6 @@ import useHistoryStore from "../../../store/useHistoryStore";
 import usePlaylistStore from "../../../store/usePlaylistStore";
 
 const SOURCE_LABELS = {
-  spotify: { color: "#1DB954", bg: "rgba(29, 185, 84, 0.12)", label: "SPOTIFY" },
   lastfm: { color: "#f87171", bg: "rgba(213, 16, 7, 0.12)", label: "LAST.FM" },
   listenbrainz: { color: "#c084fc", bg: "rgba(168, 85, 247, 0.12)", label: "LISTENBRAINZ" },
 };
