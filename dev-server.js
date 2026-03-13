@@ -9,6 +9,7 @@ const PORT = 3001;
 const routes = {
   "/api/spotify/search": () => import("./api/spotify/search.js"),
   "/api/spotify/recommend": () => import("./api/spotify/recommend.js"),
+  "/api/spotify/personalized": () => import("./api/spotify/personalized.js"),
   "/api/listenbrainz/recommend": () =>
     import("./api/listenbrainz/recommend.js"),
   "/api/lastfm/recommend": () => import("./api/lastfm/recommend.js"),

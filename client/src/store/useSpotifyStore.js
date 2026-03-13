@@ -2,6 +2,7 @@ import { create } from "zustand";
 import useDiscoveryStore from "./useDiscoveryStore";
 import useLastfmStore from "./useLastfmStore";
 import useHistoryStore from "./useHistoryStore";
+import usePlaylistStore from "./usePlaylistStore";
 
 const useSpotifyStore = create((set) => ({
   query: "",
@@ -17,6 +18,11 @@ const useSpotifyStore = create((set) => ({
   error: null,
 
   hasAutoLoaded: false,
+
+  // Personalized "For You" section
+  forYou: [],
+  isLoadingForYou: false,
+  forYouLoaded: false,
 
   setQuery: (query) => set({ query }),
 
@@ -78,6 +84,34 @@ const useSpotifyStore = create((set) => ({
       });
     } catch (err) {
       set({ error: err.message, isLoadingRecs: false });
+    }
+  },
+
+  fetchPersonalized: async () => {
+    const state = useSpotifyStore.getState();
+    if (state.forYouLoaded || state.isLoadingForYou) return;
+
+    const historyIds = useHistoryStore.getState().history.map((t) => t.id);
+    const playlistIds = usePlaylistStore.getState().playlist.map((t) => t.id);
+
+    if (historyIds.length === 0 && playlistIds.length === 0) return;
+
+    set({ isLoadingForYou: true });
+
+    try {
+      const params = new URLSearchParams();
+      if (historyIds.length) params.set("historyIds", historyIds.slice(0, 10).join(","));
+      if (playlistIds.length) params.set("playlistIds", playlistIds.slice(0, 10).join(","));
+
+      const res = await fetch(`/api/spotify/personalized?${params}`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `Personalized failed (${res.status})`);
+      }
+      const data = await res.json();
+      set({ forYou: data.forYou || [], isLoadingForYou: false, forYouLoaded: true });
+    } catch {
+      set({ isLoadingForYou: false, forYouLoaded: true });
     }
   },
 

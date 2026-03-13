@@ -13,6 +13,7 @@ import {
 import SearchBar from "../ui/Searchbar";
 import TrackCard from "../ui/TrackCard";
 import HistorySection from "../ui/HistorySection";
+import PersonalizedSection from "../ui/PersonalizedSection";
 import useSpotifyStore from "../../../store/useSpotifyStore";
 import useDiscoveryStore from "../../../store/useDiscoveryStore";
 import useLastfmStore from "../../../store/useLastfmStore";
@@ -60,6 +61,8 @@ export default function SearchAndResults() {
       <SearchBar />
 
       <HistorySection />
+
+      <PersonalizedSection />
 
       {error && (
         <Box
