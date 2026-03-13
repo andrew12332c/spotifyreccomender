@@ -21,6 +21,7 @@ const useSpotifyStore = create((set) => ({
 
   // Personalized "For You" section
   forYou: [],
+  forYouSources: {},
   isLoadingForYou: false,
   forYouLoaded: false,
 
@@ -91,17 +92,35 @@ const useSpotifyStore = create((set) => ({
     const state = useSpotifyStore.getState();
     if (state.forYouLoaded || state.isLoadingForYou) return;
 
-    const historyIds = useHistoryStore.getState().history.map((t) => t.id);
-    const playlistIds = usePlaylistStore.getState().playlist.map((t) => t.id);
+    const historyTracks = useHistoryStore.getState().history;
+    const playlistTracks = usePlaylistStore.getState().playlist;
 
-    if (historyIds.length === 0 && playlistIds.length === 0) return;
+    if (historyTracks.length === 0 && playlistTracks.length === 0) return;
 
     set({ isLoadingForYou: true });
 
     try {
+      const toSeed = (t) => ({
+        id: t.id,
+        name: t.name,
+        artist: t.artists[0]?.name || "",
+      });
+
+      const historySeeds = historyTracks.slice(0, 5).map(toSeed);
+      const playlistSeeds = playlistTracks.slice(0, 3).map(toSeed);
+      const seeds = [...historySeeds, ...playlistSeeds];
+
+      const unique = [];
+      const seenIds = new Set();
+      for (const s of seeds) {
+        if (!seenIds.has(s.id)) {
+          seenIds.add(s.id);
+          unique.push(s);
+        }
+      }
+
       const params = new URLSearchParams();
-      if (historyIds.length) params.set("historyIds", historyIds.slice(0, 10).join(","));
-      if (playlistIds.length) params.set("playlistIds", playlistIds.slice(0, 10).join(","));
+      params.set("seeds", JSON.stringify(unique.slice(0, 8)));
 
       const res = await fetch(`/api/spotify/personalized?${params}`);
       if (!res.ok) {
@@ -109,7 +128,12 @@ const useSpotifyStore = create((set) => ({
         throw new Error(body.error || `Personalized failed (${res.status})`);
       }
       const data = await res.json();
-      set({ forYou: data.forYou || [], isLoadingForYou: false, forYouLoaded: true });
+      set({
+        forYou: data.forYou || [],
+        forYouSources: data.sources || {},
+        isLoadingForYou: false,
+        forYouLoaded: true,
+      });
     } catch {
       set({ isLoadingForYou: false, forYouLoaded: true });
     }
