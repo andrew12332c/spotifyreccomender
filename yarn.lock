@@ -522,7 +522,7 @@ caniuse-lite@^1.0.30001759:
   resolved "https://registry.npmjs.org/caniuse-lite/-/caniuse-lite-1.0.30001763.tgz"
   integrity sha512-mh/dGtq56uN98LlNX9qdbKnzINhX0QzhiWBFEkFfsFO4QyCvL8YegrJAazCwXIeqkIob8BlZPGM3xdnY+sgmvQ==
 
-"client@file:C:\\Users\\andre\\Downloads\\SpotifyRecommenation-master\\SpotifyRecommenation-master\\client":
+"client@file:C:\\Users\\andre\\Downloads\\spotify reccomender\\client":
   resolved "file:client"
   dependencies:
     "@chakra-ui/react" "^2.8.2"
@@ -530,6 +530,7 @@ caniuse-lite@^1.0.30001759:
     "@emotion/styled" "^11.11.0"
     react "^18.2.0"
     react-dom "^18.2.0"
+    react-router-dom "^7.12.0"
     zustand "^4.5.2"
 
 color2k@^2.0.2:

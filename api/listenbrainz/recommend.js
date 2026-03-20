@@ -3,20 +3,15 @@ import {
   findSimilarArtists,
   getTopRecordings,
 } from "./_listenbrainz.js";
-import { spotifyFetch } from "../spotify/_spotify.js";
 
 /**
  * GET /api/listenbrainz/recommend?artistName=…&trackName=…&seedArtistId=…
  *
  * Returns up to 5 "wildcard" tracks sourced via MusicBrainz collaborative-
- * filtering (tag similarity) and ListenBrainz popularity data, then mapped
- * back to playable Spotify tracks.
- *
- * If any individual candidate cannot be resolved on Spotify it is silently
- * skipped (fallback logic).
+ * filtering (tag similarity) and ListenBrainz popularity data.
  */
 export default async function handler(req, res) {
-  const { artistName, trackName, seedArtistId } = req.query;
+  const { artistName } = req.query;
 
   if (!artistName) {
     return res.status(400).json({ error: "Missing artistName parameter" });
@@ -43,6 +38,11 @@ export default async function handler(req, res) {
             recordingName: r.recording_name || r.title || "",
             artistName: r.artist_name || artist.name,
             recordingMBID: r.recording_mbid || r.id || "",
+            releaseMBID:
+              r.release_mbid ||
+              r.release?.id ||
+              r.release_id ||
+              "",
           }))
         )
       )
@@ -57,35 +57,13 @@ export default async function handler(req, res) {
       return res.json({ wildcards: [] });
     }
 
-    // 4. Map each candidate to a Spotify track via search (parallel, cap 20)
-    const spotifyResults = await Promise.allSettled(
-      candidates.slice(0, 20).map(async (c) => {
-        const q = `track:${c.recordingName} artist:${c.artistName}`;
-        const data = await spotifyFetch("/search", {
-          q,
-          type: "track",
-          limit: 1,
-        });
-        const hit = data.tracks?.items?.[0];
-        if (!hit) return null;
-        return {
-          ...formatTrack(hit),
-          source: "listenbrainz",
-          mbid: c.recordingMBID,
-        };
-      })
-    );
-
-    // 5. Collect, deduplicate by artist, exclude seed
+    // 4. Convert to local track objects, deduplicate by artist
     const seen = new Set();
     const wildcards = [];
 
-    for (const result of spotifyResults) {
-      if (result.status !== "fulfilled" || !result.value) continue;
-      const track = result.value;
+    for (const candidate of candidates.slice(0, 24)) {
+      const track = formatCandidate(candidate);
       const primaryArtistId = track.artists[0]?.id;
-
-      if (primaryArtistId === seedArtistId) continue;
       if (seen.has(primaryArtistId)) continue;
       seen.add(primaryArtistId);
 
@@ -100,19 +78,34 @@ export default async function handler(req, res) {
   }
 }
 
-function formatTrack(t) {
+function formatCandidate(c) {
+  const artistName = c.artistName || "Unknown Artist";
+  const trackName = c.recordingName || "Unknown Track";
+  const coverUrl = c.releaseMBID
+    ? `https://coverartarchive.org/release/${c.releaseMBID}/front-250`
+    : "";
   return {
-    id: t.id,
-    name: t.name,
-    artists: t.artists.map((a) => ({ id: a.id, name: a.name })),
+    id: c.recordingMBID || `lb:${slug(trackName)}:${slug(artistName)}`,
+    name: trackName,
+    artists: [{ id: `lb-artist:${slug(artistName)}`, name: artistName }],
     album: {
-      name: t.album.name,
-      image: t.album.images?.[0]?.url,
-      imageSmall: t.album.images?.[1]?.url || t.album.images?.[0]?.url,
+      name: "ListenBrainz",
+      image: coverUrl,
+      imageSmall: coverUrl,
     },
-    previewUrl: t.preview_url,
-    externalUrl: t.external_urls?.spotify,
-    popularity: t.popularity,
-    durationMs: t.duration_ms,
+    previewUrl: null,
+    externalUrl: null,
+    popularity: null,
+    durationMs: null,
+    source: "listenbrainz",
+    mbid: c.recordingMBID || null,
   };
+}
+
+function slug(value) {
+  return String(value)
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9-]/g, "");
 }

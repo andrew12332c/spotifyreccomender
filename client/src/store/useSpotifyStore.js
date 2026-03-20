@@ -2,9 +2,9 @@ import { create } from "zustand";
 import useDiscoveryStore from "./useDiscoveryStore";
 import useLastfmStore from "./useLastfmStore";
 import useHistoryStore from "./useHistoryStore";
-import usePlaylistStore from "./usePlaylistStore";
+import useHistoryPoolStore from "./useHistoryPoolStore";
 
-const useSpotifyStore = create((set) => ({
+const useSpotifyStore = create((set, get) => ({
   query: "",
   searchResults: [],
   isSearching: false,
@@ -18,12 +18,6 @@ const useSpotifyStore = create((set) => ({
   error: null,
 
   hasAutoLoaded: false,
-
-  // Personalized "For You" section
-  forYou: [],
-  forYouSources: {},
-  isLoadingForYou: false,
-  forYouLoaded: false,
 
   setQuery: (query) => set({ query }),
 
@@ -51,6 +45,28 @@ const useSpotifyStore = create((set) => ({
   },
 
   selectTrack: async (track) => {
+    // --- Cache-based "From Your History" logic (no API calls) ---
+    // 1. Collect all recommendation tracks currently loaded from every store
+    const { similar: prevSimilar, discovery: prevDiscovery } = get();
+    const prevLastfmSimilar = useLastfmStore.getState().lastfmSimilar;
+    const prevLastfmArtists = useLastfmStore.getState().lastfmArtists;
+    const prevWildcards = useDiscoveryStore.getState().wildcards;
+
+    const allPrevRecs = [
+      ...prevSimilar,
+      ...prevDiscovery,
+      ...prevLastfmSimilar,
+      ...prevLastfmArtists,
+      ...prevWildcards,
+    ].filter(Boolean);
+
+    // 2. Push those recs into the persistent pool
+    useHistoryPoolStore.getState().saveToPool(allPrevRecs);
+
+    // 3. Pick 4 from the pool (excluding the track the user just clicked)
+    useHistoryPoolStore.getState().pickFromHistory(new Set([track.id]));
+
+    // --- Standard recommendation flow ---
     useHistoryStore.getState().addToHistory(track);
 
     set({
@@ -88,57 +104,6 @@ const useSpotifyStore = create((set) => ({
     }
   },
 
-  fetchPersonalized: async () => {
-    const state = useSpotifyStore.getState();
-    if (state.forYouLoaded || state.isLoadingForYou) return;
-
-    const historyTracks = useHistoryStore.getState().history;
-    const playlistTracks = usePlaylistStore.getState().playlist;
-
-    if (historyTracks.length === 0 && playlistTracks.length === 0) return;
-
-    set({ isLoadingForYou: true });
-
-    try {
-      const toSeed = (t) => ({
-        id: t.id,
-        name: t.name,
-        artist: t.artists[0]?.name || "",
-      });
-
-      const historySeeds = historyTracks.slice(0, 5).map(toSeed);
-      const playlistSeeds = playlistTracks.slice(0, 3).map(toSeed);
-      const seeds = [...historySeeds, ...playlistSeeds];
-
-      const unique = [];
-      const seenIds = new Set();
-      for (const s of seeds) {
-        if (!seenIds.has(s.id)) {
-          seenIds.add(s.id);
-          unique.push(s);
-        }
-      }
-
-      const params = new URLSearchParams();
-      params.set("seeds", JSON.stringify(unique.slice(0, 8)));
-
-      const res = await fetch(`/api/spotify/personalized?${params}`);
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || `Personalized failed (${res.status})`);
-      }
-      const data = await res.json();
-      set({
-        forYou: data.forYou || [],
-        forYouSources: data.sources || {},
-        isLoadingForYou: false,
-        forYouLoaded: true,
-      });
-    } catch {
-      set({ isLoadingForYou: false, forYouLoaded: true });
-    }
-  },
-
   autoLoadFromHistory: () => {
     const state = useSpotifyStore.getState();
     if (state.hasAutoLoaded || state.selectedTrack) return;
@@ -153,6 +118,7 @@ const useSpotifyStore = create((set) => ({
   clearSelection: () => {
     useDiscoveryStore.getState().clearWildcards();
     useLastfmStore.getState().clearLastfm();
+    useHistoryPoolStore.getState().clearFromHistory();
     set({
       selectedTrack: null,
       similar: [],

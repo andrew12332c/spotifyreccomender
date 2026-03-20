@@ -13,7 +13,7 @@ import {
 import SearchBar from "../ui/Searchbar";
 import TrackCard from "../ui/TrackCard";
 import HistorySection from "../ui/HistorySection";
-import PersonalizedSection from "../ui/PersonalizedSection";
+import FromHistorySection from "../ui/FromHistorySection";
 import useSpotifyStore from "../../../store/useSpotifyStore";
 import useDiscoveryStore from "../../../store/useDiscoveryStore";
 import useLastfmStore from "../../../store/useLastfmStore";
@@ -21,8 +21,6 @@ import useLastfmStore from "../../../store/useLastfmStore";
 export default function SearchAndResults() {
   const {
     selectedTrack,
-    similar,
-    discovery,
     isLoadingRecs,
     error,
     selectTrack,
@@ -38,12 +36,12 @@ export default function SearchAndResults() {
   }, [autoLoadFromHistory]);
 
   const allShownIds = new Set([
-    ...similar.map((t) => t.id),
-    ...discovery.map((t) => t.id),
+    ...lastfmSimilar.map((t) => t.id),
+    ...lastfmArtists.map((t) => t.id),
   ]);
   const knownArtistIds = new Set([
-    ...similar.flatMap((t) => t.artists.map((a) => a.id)),
-    ...discovery.flatMap((t) => t.artists.map((a) => a.id)),
+    ...lastfmSimilar.flatMap((t) => t.artists.map((a) => a.id)),
+    ...lastfmArtists.flatMap((t) => t.artists.map((a) => a.id)),
   ]);
 
   const uniqueWildcards = wildcards.filter(
@@ -62,7 +60,7 @@ export default function SearchAndResults() {
 
       <HistorySection />
 
-      <PersonalizedSection />
+      <FromHistorySection />
 
       {error && (
         <Box
@@ -137,66 +135,6 @@ export default function SearchAndResults() {
             </VStack>
           ) : (
             <VStack spacing="8" align="stretch">
-              <Flex
-                gap="8"
-                direction={{ base: "column", lg: "row" }}
-                align="flex-start"
-              >
-                {/* Similar Tracks */}
-                <Box flex="1" w="100%">
-                  <Box mb="4">
-                    <Heading size="md" color="white">
-                      Similar Tracks
-                    </Heading>
-                    <Text color="#888" fontSize="xs" mt="1">
-                      Songs with the same vibe — may include the same artist
-                    </Text>
-                  </Box>
-                  <VStack spacing="2" align="stretch">
-                    {similar.length > 0 ? (
-                      similar.map((track) => (
-                        <TrackCard
-                          key={track.id}
-                          track={track}
-                          onSelect={selectTrack}
-                        />
-                      ))
-                    ) : (
-                      <Text color="#555" fontSize="sm" py="8" textAlign="center">
-                        No similar tracks found
-                      </Text>
-                    )}
-                  </VStack>
-                </Box>
-
-                {/* Discovery Tracks */}
-                <Box flex="1" w="100%">
-                  <Box mb="4">
-                    <Heading size="md" color="white">
-                      Discover Something New
-                    </Heading>
-                    <Text color="#888" fontSize="xs" mt="1">
-                      Different artists with matching genre, tempo & energy
-                    </Text>
-                  </Box>
-                  <VStack spacing="2" align="stretch">
-                    {discovery.length > 0 ? (
-                      discovery.map((track) => (
-                        <TrackCard
-                          key={track.id}
-                          track={track}
-                          onSelect={selectTrack}
-                        />
-                      ))
-                    ) : (
-                      <Text color="#555" fontSize="sm" py="8" textAlign="center">
-                        No discovery tracks found
-                      </Text>
-                    )}
-                  </VStack>
-                </Box>
-              </Flex>
-
               {/* Last.fm Scrobble Matches */}
               <Flex
                 gap="8"
@@ -383,8 +321,8 @@ export default function SearchAndResults() {
             Search for a song to get started
           </Text>
           <Text color="#444" fontSize="sm" maxW="400px" textAlign="center">
-            Recommendations powered by Spotify, Last.fm scrobble data, and
-            ListenBrainz collaborative filtering — three engines, one playlist.
+            Recommendations powered by Last.fm scrobble data and ListenBrainz
+            collaborative filtering.
           </Text>
         </VStack>
       )}

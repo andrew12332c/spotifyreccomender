@@ -42,6 +42,7 @@ export async function getSimilarTracks(trackName, artistName, limit = 10) {
     playcount: Number(t.playcount) || 0,
     lastfmUrl: t.url,
     match: Number(t.match) || 0,
+    image: extractImage(t.image),
   }));
 }
 
@@ -75,5 +76,16 @@ export async function getArtistTopTracks(artistName, limit = 5) {
     artist: artistName,
     playcount: Number(t.playcount) || 0,
     lastfmUrl: t.url,
+    image: extractImage(t.image),
   }));
+}
+
+function extractImage(images) {
+  if (!Array.isArray(images)) return "";
+  return (
+    images.find((img) => img.size === "medium")?.["#text"] ||
+    images.find((img) => img.size === "small")?.["#text"] ||
+    images.find((img) => img.size === "large")?.["#text"] ||
+    ""
+  );
 }

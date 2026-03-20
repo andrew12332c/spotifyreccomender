@@ -30,7 +30,7 @@ export default function Navbar() {
                     color="#C2c2c2"
                     whiteSpace="nowrap"
                 >
-                    SpotifyRecommender
+                    Reccomender
                 </Text>
             </Flex>
 

@@ -3,19 +3,17 @@ import {
   getSimilarArtists,
   getArtistTopTracks,
 } from "./_lastfm.js";
-import { spotifyFetch } from "../spotify/_spotify.js";
 
 /**
  * GET /api/lastfm/recommend?trackName=…&artistName=…&seedArtistId=…
  *
  * Uses Last.fm's scrobble-based similarity data (track.getSimilar and
- * artist.getSimilar) to find recommendations, then maps them to playable
- * Spotify tracks.  Returns two arrays:
+ * artist.getSimilar) to find recommendations. Returns two arrays:
  *   - lastfmSimilar: tracks similar to the seed (same-vibe, scrobble-correlated)
  *   - lastfmArtists: top tracks from similar artists (broader discovery)
  */
 export default async function handler(req, res) {
-  const { trackName, artistName, seedArtistId } = req.query;
+  const { trackName, artistName } = req.query;
 
   if (!trackName || !artistName) {
     return res
@@ -30,7 +28,7 @@ export default async function handler(req, res) {
     ]);
 
     // --- Similar tracks (scrobble-correlated) ---
-    const simMapped = await mapToSpotify(similarTracks, seedArtistId);
+    const simMapped = mapCandidates(similarTracks, "lastfm-similar");
 
     // --- Similar-artist top tracks ---
     const artistCandidates = [];
@@ -40,7 +38,7 @@ export default async function handler(req, res) {
     for (const r of batchResults) {
       if (r.status === "fulfilled") artistCandidates.push(...r.value);
     }
-    const artMapped = await mapToSpotify(artistCandidates, seedArtistId);
+    const artMapped = mapCandidates(artistCandidates, "lastfm-artist");
 
     // Deduplicate artist-based tracks against the similar set
     const simIds = new Set(simMapped.map((t) => t.id));
@@ -56,58 +54,44 @@ export default async function handler(req, res) {
   }
 }
 
-/**
- * Map an array of { name, artist } candidates to Spotify tracks.
- * Silently skips any candidate that can't be resolved.
- */
-async function mapToSpotify(candidates, seedArtistId) {
-  const results = await Promise.allSettled(
-    candidates.map(async (c) => {
-      const q = `track:${c.name} artist:${c.artist}`;
-      const data = await spotifyFetch("/search", {
-        q,
-        type: "track",
-        limit: 1,
-      });
-      const hit = data.tracks?.items?.[0];
-      if (!hit) return null;
-      return {
-        ...formatTrack(hit),
-        source: "lastfm",
-        lastfmMatch: c.match,
-      };
-    })
-  );
-
+function mapCandidates(candidates, idPrefix) {
   const seen = new Set();
   const mapped = [];
-
-  for (const r of results) {
-    if (r.status !== "fulfilled" || !r.value) continue;
-    const track = r.value;
-    const aid = track.artists[0]?.id;
-    if (aid === seedArtistId) continue;
-    if (seen.has(track.id)) continue;
+  for (const c of candidates) {
+    const track = formatCandidate(c, idPrefix);
+    if (!track || seen.has(track.id)) continue;
     seen.add(track.id);
     mapped.push(track);
   }
-
   return mapped;
 }
 
-function formatTrack(t) {
+function formatCandidate(c, idPrefix) {
+  const artistName = c.artist || "Unknown Artist";
+  const trackName = c.name || "Unknown Track";
+  const id = `${idPrefix}:${slug(trackName)}:${slug(artistName)}`;
   return {
-    id: t.id,
-    name: t.name,
-    artists: t.artists.map((a) => ({ id: a.id, name: a.name })),
+    id,
+    name: trackName,
+    artists: [{ id: `lfm-artist:${slug(artistName)}`, name: artistName }],
     album: {
-      name: t.album.name,
-      image: t.album.images?.[0]?.url,
-      imageSmall: t.album.images?.[1]?.url || t.album.images?.[0]?.url,
+      name: "Last.fm",
+      image: c.image || "",
+      imageSmall: c.image || "",
     },
-    previewUrl: t.preview_url,
-    externalUrl: t.external_urls?.spotify,
-    popularity: t.popularity,
-    durationMs: t.duration_ms,
+    previewUrl: null,
+    externalUrl: c.lastfmUrl || null,
+    popularity: c.playcount || null,
+    durationMs: null,
+    source: "lastfm",
+    lastfmMatch: c.match,
   };
+}
+
+function slug(value) {
+  return String(value)
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9-]/g, "");
 }
